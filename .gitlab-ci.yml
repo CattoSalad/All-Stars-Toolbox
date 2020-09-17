@@ -1,0 +1,56 @@
+image: mcr.microsoft.com/dotnet/core/sdk:3.1
+
+stages:
+  - dotnet_build
+  - dotnet_release
+  - dotnet_release_slim
+  - docker_build
+  - docker_release
+
+dotnet_build:
+  stage: dotnet_build
+  script:
+    - dotnet build
+
+dotnet_release:
+  stage: dotnet_release
+  artifacts:
+    paths:
+      - publish/
+  script:
+    - echo Compiling with "-c Release"...
+    - dotnet build -c Release
+    - echo Publishing executables...
+    - dotnet publish -c Release -o publish/astoolbox astoolbox/astoolbox.csproj
+
+dotnet_release_slim:
+  stage: dotnet_release_slim
+  artifacts:
+    paths:
+      - publish/
+  script:
+    - echo Removing PDB files...
+    - rm publish/*/*.pdb
+
+docker_build:
+  stage: docker_build
+  image:
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
+  script:
+    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
+    - /kaniko/executor --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/Dockerfile --destination $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+
+docker_release:
+  stage: docker_release
+  image:
+    name: gcr.io/go-containerregistry/crane:debug
+    entrypoint: [""]
+  variables:
+    GIT_STRATEGY: none
+  before_script:
+    - "export TAG_NAME=$CI_COMMIT_REF_NAME && [[ $CI_COMMIT_REF_NAME == 'master' ]] && TAG_NAME=latest"
+  script:
+    - crane auth login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - crane cp $CI_REGISTRY_IMAGE/$APPLICATION_TYPE:$CI_COMMIT_SHA $CI_REGISTRY_IMAGE:$TAG_NAME
+
