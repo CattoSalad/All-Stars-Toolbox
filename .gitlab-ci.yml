@@ -12,32 +12,36 @@ dotnet_build:
   script:
     - dotnet build
 
-dotnet_release:
+.dotnet_release:
   stage: dotnet_release
   artifacts:
     paths:
       - publish/
   script:
-    - echo Compiling with "-c Release"...
-    - dotnet build -c Release
-    - echo Publishing executables...
-    - dotnet publish -c Release -o publish/astoolbox astoolbox/astoolbox.csproj
-
-dotnet_release_slim:
-  stage: dotnet_release_slim
-  artifacts:
-    paths:
-      - publish/
-  script:
+    - echo Publishing executable...
+    - dotnet publish -c Release -o publish/astoolbox-$CI_COMMIT_SHORT_SHA-$DOTNET_TARGET_PLATFORM -r $DOTNET_TARGET_PLATFORM
     - echo Removing PDB files...
     - rm publish/*/*.pdb
+
+dotnet_release_linux:
+  extends: .dotnet_release
+  variables:
+    DOTNET_TARGET_PLATFORM: linux-x64
+
+dotnet_release_windows:
+  extends: .dotnet_release
+  variables:
+    DOTNET_TARGET_PLATFORM: win-x64
 
 docker_build:
   stage: docker_build
   image:
     name: gcr.io/kaniko-project/executor:debug
     entrypoint: [""]
+  dependencies:
+    - dotnet_release_linux
   script:
+    - mv publish/astoolbox-$CI_COMMIT_SHORT_SHA-linux-x64 publish-docker
     - echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
     - /kaniko/executor --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/Dockerfile --destination $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
 
